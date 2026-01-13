@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Journal Pro</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="logo">
+                <span class="logo-icon">◈</span>
+                <span class="logo-text">TradeLog</span>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item active" data-tab="dashboard">
+                    <span class="nav-icon">◉</span>
+                    <span>Dashboard</span>
+                </li>
+                <li class="nav-item" data-tab="new-trade">
+                    <span class="nav-icon">◎</span>
+                    <span>New Trade</span>
+                </li>
+                <li class="nav-item" data-tab="history">
+                    <span class="nav-icon">◈</span>
+                    <span>History</span>
+                </li>
+                <li class="nav-item" data-tab="settings">
+                    <span class="nav-icon">◇</span>
+                    <span>Settings</span>
+                </li>
+            </ul>
+            <div class="sidebar-footer">
+                <button id="export-btn" class="btn-outline">Export Data</button>
+                <button id="import-btn" class="btn-outline">Import Data</button>
+                <input type="file" id="import-file" accept=".json" hidden>
+            </div>
+        </nav>
+
+        <!-- Mobile Header -->
+        <header class="mobile-header">
+            <button class="menu-toggle" id="menu-toggle">☰</button>
+            <span class="mobile-logo">◈ TradeLog</span>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard Tab -->
+            <section id="dashboard" class="tab-content active">
+                <div class="page-header">
+                    <h1>Dashboard</h1>
+                    <p class="subtitle">Your trading performance at a glance</p>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card balance">
+                        <div class="stat-label">Account Balance</div>
+                        <div class="stat-value" id="current-balance">$0.00</div>
+                        <div class="stat-change positive" id="balance-change">+0.00%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total P&L</div>
+                        <div class="stat-value" id="total-pnl">$0.00</div>
+                        <div class="stat-sublabel">All time</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Win Rate</div>
+                        <div class="stat-value" id="win-rate">0%</div>
+                        <div class="stat-sublabel"><span id="wins">0</span>W / <span id="losses">0</span>L</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Max Drawdown</div>
+                        <div class="stat-value negative" id="max-drawdown">0%</div>
+                        <div class="stat-sublabel">Peak to trough</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Avg R:R</div>
+                        <div class="stat-value" id="avg-rr">0.00</div>
+                        <div class="stat-sublabel">Risk to Reward</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Trades</div>
+                        <div class="stat-value" id="total-trades">0</div>
+                        <div class="stat-sublabel">Closed positions</div>
+                    </div>
+                </div>
+
+                <div class="charts-section">
+                    <div class="chart-container">
+                        <h3>Equity Curve</h3>
+                        <div class="chart" id="equity-chart">
+                            <canvas id="equity-canvas"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Monthly Performance</h3>
+                        <div class="chart" id="monthly-chart">
+                            <canvas id="monthly-canvas"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="recent-trades">
+                    <h3>Recent Trades</h3>
+                    <div class="trades-table-wrapper">
+                        <table class="trades-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Symbol</th>
+                                    <th>Direction</th>
+                                    <th>P&L</th>
+                                    <th>R:R</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-trades-body">
+                                <tr class="empty-row">
+                                    <td colspan="5">No trades yet. Start logging your trades!</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- New Trade Tab -->
+            <section id="new-trade" class="tab-content">
+                <div class="page-header">
+                    <h1>Log New Trade</h1>
+                    <p class="subtitle">Record your trading activity</p>
+                </div>
+
+                <form id="trade-form" class="trade-form">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="trade-date">Date & Time</label>
+                            <input type="datetime-local" id="trade-date" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="trade-symbol">Symbol</label>
+                            <input type="text" id="trade-symbol" placeholder="e.g., EURUSD, BTC, AAPL" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="trade-direction">Direction</label>
+                            <select id="trade-direction" required>
+                                <option value="">Select...</option>
+                                <option value="long">Long</option>
+                                <option value="short">Short</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="trade-entry">Entry Price</label>
+                            <input type="number" id="trade-entry" step="any" placeholder="0.00" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="trade-exit">Exit Price</label>
+                            <input type="number" id="trade-exit" step="any" placeholder="0.00" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="trade-sl">Stop Loss</label>
+                            <input type="number" id="trade-sl" step="any" placeholder="0.00" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="trade-tp">Take Profit</label>
+                            <input type="number" id="trade-tp" step="any" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="trade-size">Position Size</label>
+                            <input type="number" id="trade-size" step="any" placeholder="Lots/Contracts" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="trade-pnl">P&L ($)</label>
+                            <input type="number" id="trade-pnl" step="any" placeholder="0.00" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="trade-fees">Fees/Commission</label>
+                            <input type="number" id="trade-fees" step="any" placeholder="0.00" value="0">
+                        </div>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="trade-strategy">Strategy Used</label>
+                        <input type="text" id="trade-strategy" placeholder="e.g., Breakout, Mean Reversion, News Trade">
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="trade-notes">Trade Notes</label>
+                        <textarea id="trade-notes" rows="4" placeholder="What was your analysis? What did you learn?"></textarea>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label>Trade Screenshots</label>
+                        <div class="screenshot-upload" id="screenshot-zone">
+                            <input type="file" id="screenshot-input" accept="image/*" multiple hidden>
+                            <div class="upload-prompt">
+                                <span class="upload-icon">📷</span>
+                                <span>Click or drag images here</span>
+                                <span class="upload-hint">Supports JPG, PNG, GIF</span>
+                            </div>
+                        </div>
+                        <div class="screenshot-previews" id="screenshot-previews"></div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" id="clear-form">Clear</button>
+                        <button type="submit" class="btn-primary">Save Trade</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- History Tab -->
+            <section id="history" class="tab-content">
+                <div class="page-header">
+                    <h1>Trade History</h1>
+                    <p class="subtitle">All your recorded trades</p>
+                </div>
+
+                <div class="filters-bar">
+                    <div class="filter-group">
+                        <label>Symbol</label>
+                        <input type="text" id="filter-symbol" placeholder="All symbols">
+                    </div>
+                    <div class="filter-group">
+                        <label>Direction</label>
+                        <select id="filter-direction">
+                            <option value="">All</option>
+                            <option value="long">Long</option>
+                            <option value="short">Short</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Result</label>
+                        <select id="filter-result">
+                            <option value="">All</option>
+                            <option value="win">Winners</option>
+                            <option value="loss">Losers</option>
+                            <option value="breakeven">Breakeven</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>From</label>
+                        <input type="date" id="filter-from">
+                    </div>
+                    <div class="filter-group">
+                        <label>To</label>
+                        <input type="date" id="filter-to">
+                    </div>
+                    <button class="btn-secondary" id="clear-filters">Clear Filters</button>
+                </div>
+
+                <div class="trades-table-wrapper full-history">
+                    <table class="trades-table" id="history-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Symbol</th>
+                                <th>Dir</th>
+                                <th>Entry</th>
+                                <th>Exit</th>
+                                <th>Size</th>
+                                <th>P&L</th>
+                                <th>R:R</th>
+                                <th>Strategy</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-body">
+                            <tr class="empty-row">
+                                <td colspan="10">No trades found</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Settings Tab -->
+            <section id="settings" class="tab-content">
+                <div class="page-header">
+                    <h1>Settings</h1>
+                    <p class="subtitle">Configure your trading journal</p>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Account Settings</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="initial-balance">Initial Balance ($)</label>
+                            <input type="number" id="initial-balance" step="any" placeholder="10000">
+                        </div>
+                        <div class="form-group">
+                            <label for="risk-per-trade">Risk Per Trade (%)</label>
+                            <input type="number" id="risk-per-trade" step="0.1" placeholder="1" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="currency">Currency</label>
+                            <select id="currency">
+                                <option value="USD">USD ($)</option>
+                                <option value="EUR">EUR (€)</option>
+                                <option value="GBP">GBP (£)</option>
+                                <option value="JPY">JPY (¥)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn-primary" id="save-settings">Save Settings</button>
+                </div>
+
+                <div class="settings-section danger-zone">
+                    <h3>Danger Zone</h3>
+                    <p>These actions are irreversible. Please be careful.</p>
+                    <button class="btn-danger" id="reset-all">Reset All Data</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Trade Detail Modal -->
+    <div class="modal" id="trade-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <div class="modal-header">
+                <h2>Trade Details</h2>
+            </div>
+            <div class="modal-body" id="trade-modal-body">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+
