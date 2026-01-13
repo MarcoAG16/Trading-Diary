@@ -75,5 +75,6 @@ All your trading data is stored in your browser's localStorage. This means:
 
 ## License
 
-MIT License - Feel free to modify and use for your personal trading journal.
+MIT License - Feel free to modify and use for your personal trading journal. 
+
 
