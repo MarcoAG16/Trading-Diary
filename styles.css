@@ -8,7 +8,7 @@
     --bg-primary: #0a0e17;
     --bg-secondary: #111827;
     --bg-tertiary: #1a2234;
-    --bg-elevated: #1f2a40;
+    --bg-elevated: #1f2a40; 
     
     /* Accent colors */
     --accent-primary: #00d4aa;
@@ -1126,4 +1126,5 @@ body::before {
 .text-muted { color: var(--text-muted); }
 .text-center { text-align: center; }
 .font-mono { font-family: var(--font-mono); }
+
 
