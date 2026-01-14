@@ -1,6 +1,33 @@
 // ═══════════════════════════════════════════════════════════
 // TRADING JOURNAL PRO - APPLICATION LOGIC
+// With Firebase Cloud Sync
 // ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// FIREBASE CONFIGURATION
+// Replace these values with your own from Firebase Console!
+// ═══════════════════════════════════════════════════════════
+
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+};
+
+// Initialize Firebase (only if config is set)
+let db = null;
+let auth = null;
+let isFirebaseConfigured = false;
+
+if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    auth = firebase.auth();
+    isFirebaseConfigured = true;
+}
 
 class TradingJournal {
     constructor() {
@@ -11,6 +38,9 @@ class TradingJournal {
             currency: 'USD'
         };
         this.currentScreenshots = [];
+        this.currentUser = null;
+        this.unsubscribeTrades = null;
+        this.unsubscribeSettings = null;
         
         this.init();
     }
@@ -20,17 +50,18 @@ class TradingJournal {
     // ═══════════════════════════════════════════════════════════
     
     init() {
-        this.loadData();
+        this.loadLocalData();
         this.setupEventListeners();
         this.setupNavigation();
         this.setupScreenshotUpload();
+        this.setupAuth();
         this.updateDashboard();
         this.renderHistoryTable();
         this.initCharts();
         this.populateSettingsForm();
     }
     
-    loadData() {
+    loadLocalData() {
         const storedTrades = localStorage.getItem('tradingJournal_trades');
         const storedSettings = localStorage.getItem('tradingJournal_settings');
         
@@ -43,9 +74,185 @@ class TradingJournal {
         }
     }
     
-    saveData() {
+    saveLocalData() {
         localStorage.setItem('tradingJournal_trades', JSON.stringify(this.trades));
         localStorage.setItem('tradingJournal_settings', JSON.stringify(this.settings));
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    // FIREBASE AUTHENTICATION
+    // ═══════════════════════════════════════════════════════════
+    
+    setupAuth() {
+        if (!isFirebaseConfigured) {
+            document.getElementById('login-btn').style.display = 'none';
+            this.updateSyncStatus('Local storage only');
+            return;
+        }
+        
+        // Listen for auth state changes
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                this.currentUser = user;
+                this.showLoggedInState(user);
+                this.subscribeToCloudData();
+            } else {
+                this.currentUser = null;
+                this.showLoggedOutState();
+                this.unsubscribeFromCloudData();
+            }
+        });
+        
+        // Login button
+        document.getElementById('login-btn').addEventListener('click', () => {
+            this.signIn();
+        });
+        
+        // Logout button
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            this.signOut();
+        });
+    }
+    
+    async signIn() {
+        try {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            await auth.signInWithPopup(provider);
+            this.showToast('Signed in successfully!', 'success');
+        } catch (error) {
+            console.error('Sign in error:', error);
+            this.showToast('Sign in failed: ' + error.message, 'error');
+        }
+    }
+    
+    async signOut() {
+        try {
+            await auth.signOut();
+            this.showToast('Signed out', 'success');
+        } catch (error) {
+            console.error('Sign out error:', error);
+        }
+    }
+    
+    showLoggedInState(user) {
+        document.getElementById('login-btn').style.display = 'none';
+        document.getElementById('logout-btn').style.display = 'block';
+        document.getElementById('user-info').style.display = 'flex';
+        document.getElementById('user-avatar').src = user.photoURL || '';
+        document.getElementById('user-name').textContent = user.displayName || user.email;
+    }
+    
+    showLoggedOutState() {
+        document.getElementById('login-btn').style.display = 'block';
+        document.getElementById('logout-btn').style.display = 'none';
+        document.getElementById('user-info').style.display = 'none';
+        this.updateSyncStatus('');
+    }
+    
+    updateSyncStatus(message, type = '') {
+        const status = document.getElementById('sync-status');
+        status.textContent = message;
+        status.className = 'sync-status ' + type;
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    // CLOUD DATA SYNC
+    // ═══════════════════════════════════════════════════════════
+    
+    subscribeToCloudData() {
+        if (!this.currentUser || !db) return;
+        
+        const userId = this.currentUser.uid;
+        this.updateSyncStatus('Syncing...', 'syncing');
+        
+        // Subscribe to trades collection
+        this.unsubscribeTrades = db
+            .collection('users')
+            .doc(userId)
+            .collection('trades')
+            .onSnapshot((snapshot) => {
+                this.trades = [];
+                snapshot.forEach((doc) => {
+                    this.trades.push({ id: doc.id, ...doc.data() });
+                });
+                this.saveLocalData();
+                this.updateDashboard();
+                this.renderHistoryTable();
+                this.updateCharts();
+                this.updateSyncStatus('☁️ Synced', 'synced');
+            }, (error) => {
+                console.error('Trades sync error:', error);
+                this.updateSyncStatus('Sync error', 'error');
+            });
+        
+        // Subscribe to settings
+        this.unsubscribeSettings = db
+            .collection('users')
+            .doc(userId)
+            .onSnapshot((doc) => {
+                if (doc.exists && doc.data().settings) {
+                    this.settings = { ...this.settings, ...doc.data().settings };
+                    this.saveLocalData();
+                    this.populateSettingsForm();
+                    this.updateDashboard();
+                }
+            });
+    }
+    
+    unsubscribeFromCloudData() {
+        if (this.unsubscribeTrades) {
+            this.unsubscribeTrades();
+            this.unsubscribeTrades = null;
+        }
+        if (this.unsubscribeSettings) {
+            this.unsubscribeSettings();
+            this.unsubscribeSettings = null;
+        }
+    }
+    
+    async saveTradeToCloud(trade) {
+        if (!this.currentUser || !db) return;
+        
+        this.updateSyncStatus('Saving...', 'syncing');
+        try {
+            await db
+                .collection('users')
+                .doc(this.currentUser.uid)
+                .collection('trades')
+                .doc(trade.id)
+                .set(trade);
+        } catch (error) {
+            console.error('Save trade error:', error);
+            this.showToast('Cloud save failed', 'error');
+        }
+    }
+    
+    async deleteTradeFromCloud(tradeId) {
+        if (!this.currentUser || !db) return;
+        
+        try {
+            await db
+                .collection('users')
+                .doc(this.currentUser.uid)
+                .collection('trades')
+                .doc(tradeId)
+                .delete();
+        } catch (error) {
+            console.error('Delete trade error:', error);
+        }
+    }
+    
+    async saveSettingsToCloud() {
+        if (!this.currentUser || !db) return;
+        
+        try {
+            await db
+                .collection('users')
+                .doc(this.currentUser.uid)
+                .set({ settings: this.settings }, { merge: true });
+        } catch (error) {
+            console.error('Save settings error:', error);
+        }
     }
     
     // ═══════════════════════════════════════════════════════════
@@ -189,12 +396,42 @@ class TradingJournal {
             if (file.type.startsWith('image/')) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    this.currentScreenshots.push(e.target.result);
-                    this.renderScreenshotPreviews();
+                    // Compress image to reduce size for cloud storage
+                    this.compressImage(e.target.result, (compressedImage) => {
+                        this.currentScreenshots.push(compressedImage);
+                        this.renderScreenshotPreviews();
+                    });
                 };
                 reader.readAsDataURL(file);
             }
         });
+    }
+    
+    compressImage(dataUrl, callback) {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const maxSize = 800; // Max width/height
+            let width = img.width;
+            let height = img.height;
+            
+            if (width > height && width > maxSize) {
+                height = (height * maxSize) / width;
+                width = maxSize;
+            } else if (height > maxSize) {
+                width = (width * maxSize) / height;
+                height = maxSize;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            callback(canvas.toDataURL('image/jpeg', 0.7));
+        };
+        img.src = dataUrl;
     }
     
     renderScreenshotPreviews() {
@@ -231,20 +468,26 @@ class TradingJournal {
             fees: parseFloat(document.getElementById('trade-fees').value) || 0,
             strategy: document.getElementById('trade-strategy').value,
             notes: document.getElementById('trade-notes').value,
-            screenshots: [...this.currentScreenshots]
+            screenshots: [...this.currentScreenshots],
+            createdAt: new Date().toISOString()
         };
         
         // Calculate R:R
         trade.rr = this.calculateRR(trade);
         trade.netPnl = trade.pnl - trade.fees;
         
-        this.trades.push(trade);
-        this.saveData();
-        this.clearTradeForm();
-        this.updateDashboard();
-        this.renderHistoryTable();
-        this.updateCharts();
+        // Save to cloud if logged in, otherwise local
+        if (this.currentUser && db) {
+            this.saveTradeToCloud(trade);
+        } else {
+            this.trades.push(trade);
+            this.saveLocalData();
+            this.updateDashboard();
+            this.renderHistoryTable();
+            this.updateCharts();
+        }
         
+        this.clearTradeForm();
         this.showToast('Trade saved successfully!', 'success');
         
         // Switch to dashboard
@@ -267,11 +510,15 @@ class TradingJournal {
     
     deleteTrade(id) {
         if (confirm('Are you sure you want to delete this trade?')) {
-            this.trades = this.trades.filter(t => t.id !== id);
-            this.saveData();
-            this.updateDashboard();
-            this.renderHistoryTable();
-            this.updateCharts();
+            if (this.currentUser && db) {
+                this.deleteTradeFromCloud(id);
+            } else {
+                this.trades = this.trades.filter(t => t.id !== id);
+                this.saveLocalData();
+                this.updateDashboard();
+                this.renderHistoryTable();
+                this.updateCharts();
+            }
             this.closeModal();
             this.showToast('Trade deleted', 'success');
         }
@@ -819,13 +1066,29 @@ class TradingJournal {
         this.settings.riskPerTrade = parseFloat(document.getElementById('risk-per-trade').value) || 1;
         this.settings.currency = document.getElementById('currency').value;
         
-        this.saveData();
+        this.saveLocalData();
+        
+        if (this.currentUser && db) {
+            this.saveSettingsToCloud();
+        }
+        
         this.updateDashboard();
         this.updateCharts();
         this.showToast('Settings saved!', 'success');
     }
     
-    resetAllData() {
+    async resetAllData() {
+        // Clear cloud data if logged in
+        if (this.currentUser && db) {
+            const userId = this.currentUser.uid;
+            const tradesRef = db.collection('users').doc(userId).collection('trades');
+            const snapshot = await tradesRef.get();
+            const batch = db.batch();
+            snapshot.docs.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+            await db.collection('users').doc(userId).delete();
+        }
+        
         this.trades = [];
         this.settings = {
             initialBalance: 10000,
@@ -868,30 +1131,40 @@ class TradingJournal {
         this.showToast('Data exported successfully!', 'success');
     }
     
-    importData(e) {
+    async importData(e) {
         const file = e.target.files[0];
         if (!file) return;
         
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
             try {
                 const data = JSON.parse(event.target.result);
                 
                 if (data.trades && Array.isArray(data.trades)) {
-                    this.trades = data.trades;
+                    // If logged in, upload to cloud
+                    if (this.currentUser && db) {
+                        for (const trade of data.trades) {
+                            await this.saveTradeToCloud(trade);
+                        }
+                    } else {
+                        this.trades = data.trades;
+                    }
                 }
                 
                 if (data.settings) {
                     this.settings = { ...this.settings, ...data.settings };
+                    if (this.currentUser && db) {
+                        await this.saveSettingsToCloud();
+                    }
                 }
                 
-                this.saveData();
+                this.saveLocalData();
                 this.populateSettingsForm();
                 this.updateDashboard();
                 this.renderHistoryTable();
                 this.updateCharts();
                 
-                this.showToast(`Imported ${this.trades.length} trades successfully!`, 'success');
+                this.showToast(`Imported ${data.trades?.length || 0} trades successfully!`, 'success');
             } catch (err) {
                 this.showToast('Error importing data. Please check the file format.', 'error');
                 console.error('Import error:', err);
@@ -950,4 +1223,3 @@ window.addEventListener('resize', () => {
         app.updateCharts();
     }
 });
-
