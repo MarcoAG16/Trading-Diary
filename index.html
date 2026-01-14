@@ -6,6 +6,11 @@
     <title>Trading Journal Pro</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -34,6 +39,15 @@
                 </li>
             </ul>
             <div class="sidebar-footer">
+                <div id="user-info" class="user-info" style="display: none;">
+                    <img id="user-avatar" class="user-avatar" src="" alt="Avatar">
+                    <span id="user-name" class="user-name"></span>
+                </div>
+                <button id="login-btn" class="btn-primary btn-login">
+                    <span>☁️</span> Sign in with Google
+                </button>
+                <button id="logout-btn" class="btn-outline" style="display: none;">Sign Out</button>
+                <div class="sync-status" id="sync-status"></div>
                 <button id="export-btn" class="btn-outline">Export Data</button>
                 <button id="import-btn" class="btn-outline">Import Data</button>
                 <input type="file" id="import-file" accept=".json" hidden>
