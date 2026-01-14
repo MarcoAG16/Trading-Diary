@@ -4,10 +4,14 @@
 // ═══════════════════════════════════════════════════════════
 
 
+
+
 // ═══════════════════════════════════════════════════════════
 // FIREBASE CONFIGURATION
 // Replace these values with your own from Firebase Console!
 // ═══════════════════════════════════════════════════════════
+
+
 
 
 // Your web app's Firebase configuration
@@ -20,10 +24,13 @@ const firebaseConfig = {
   appId: "1:999346566072:web:e169214b4daaf1a392954d"
 };
 
+
 // Initialize Firebase (only if config is set)
 let db = null;
 let auth = null;
 let isFirebaseConfigured = false;
+
+
 
 
 if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
@@ -32,6 +39,8 @@ if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
     auth = firebase.auth();
     isFirebaseConfigured = true;
 }
+
+
 
 
 class TradingJournal {
@@ -66,4 +75,8 @@ class TradingJournal {
         this.populateSettingsForm();
     }
     
+
+
+
+
 
