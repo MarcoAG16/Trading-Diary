@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════
 // TRADING JOURNAL PRO - APPLICATION LOGIC
-// With Firebase Cloud Sync
+// With Firebase Cloud Sync 
 // ═══════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════
@@ -1223,3 +1223,4 @@ window.addEventListener('resize', () => {
         app.updateCharts();
     }
 });
+
