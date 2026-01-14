@@ -48,12 +48,41 @@ Simply open `index.html` in your browser. No server required!
 
 ## Data Storage
 
-All your trading data is stored in your browser's localStorage. This means:
-- ✅ Data persists across sessions
-- ✅ No account or login required
-- ✅ Complete privacy - data never leaves your device
-- ⚠️ Clearing browser data will delete your trades
+### Option 1: Local Storage (Default)
+Without Firebase, all data is stored in your browser's localStorage:
+- ✅ No account required
+- ✅ Complete privacy
 - ⚠️ Data is browser-specific (won't sync across devices)
+- ⚠️ Clearing browser data will delete your trades
+
+### Option 2: Cloud Sync with Firebase (Recommended)
+Enable Google sign-in to sync your data across all devices!
+
+#### Firebase Setup:
+1. Go to [console.firebase.google.com](https://console.firebase.google.com)
+2. Create a new project (disable Analytics)
+3. Enable **Authentication** → **Google** sign-in
+4. Create **Firestore Database** in production mode
+5. Set Firestore rules:
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /users/{userId}/{document=**} {
+         allow read, write: if request.auth != null && request.auth.uid == userId;
+       }
+     }
+   }
+   ```
+6. Go to **Project Settings** → Add a **Web app**
+7. Copy your `firebaseConfig` values into `app.js` (lines 14-20)
+8. Redeploy to GitHub Pages
+
+With Firebase:
+- ✅ Data syncs across all your devices
+- ✅ Sign in with your Google account
+- ✅ Automatic backup to the cloud
+- ✅ Still works offline (syncs when online)
 
 **Tip**: Use the Export feature regularly to backup your data!
 
@@ -75,6 +104,5 @@ All your trading data is stored in your browser's localStorage. This means:
 
 ## License
 
-MIT License - Feel free to modify and use for your personal trading journal. 
-
+MIT License - Feel free to modify and use for your personal trading journal.
 
