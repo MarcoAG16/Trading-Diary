@@ -39,3 +39,19 @@ class TradingJournal {
         this.trades = [];
         this.settings = {
             initialBalance: 10000,
+            riskPerTrade: 1,
+            currency: 'USD'
+        };
+        this.currentScreenshots = [];
+        this.currentUser = null;
+        this.unsubscribeTrades = null;
+        this.unsubscribeSettings = null;
+        
+        this.init();
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    // INITIALIZATION
+    // ═══════════════════════════════════════════════════════════
+    
+    init() {
