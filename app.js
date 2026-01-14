@@ -9,7 +9,7 @@
 // ═══════════════════════════════════════════════════════════
 
 const firebaseConfig = {
-    apiKey: "AIzaSyCj_xOVIK_Fgqy50WTpzAy-6DBbXw6uDY8",
+    apiKey: "AIzaSyC9B3_NRPkal3If_Z7W06vX25qWbFLL_68",
     authDomain: "trading-journal-4aa15.firebaseapp.com",
     projectId: "trading-journal-4aa15",
     storageBucket: "trading-journal-4aa15.firebasestorage.app",
