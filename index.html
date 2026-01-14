@@ -17,9 +17,21 @@
         <!-- Sidebar Navigation -->
         <nav class="sidebar">
             <div class="logo">
-                <span class="logo-icon">◈</span>
+                <div class="logo-orb-container">
+                    <span class="logo-orb"></span>
+                    <span class="logo-orb-glow"></span>
+                </div>
                 <span class="logo-text">TradeLog</span>
             </div>
+            
+            <!-- Account Selector -->
+            <div class="account-selector">
+                <label>Account</label>
+                <select id="current-account">
+                    <option value="all">All Accounts</option>
+                </select>
+            </div>
+            
             <ul class="nav-menu">
                 <li class="nav-item active" data-tab="dashboard">
                     <span class="nav-icon">◉</span>
@@ -48,9 +60,6 @@
                 </button>
                 <button id="logout-btn" class="btn-outline" style="display: none;">Sign Out</button>
                 <div class="sync-status" id="sync-status"></div>
-                <button id="export-btn" class="btn-outline">Export Data</button>
-                <button id="import-btn" class="btn-outline">Import Data</button>
-                <input type="file" id="import-file" accept=".json" hidden>
             </div>
         </nav>
 
@@ -150,6 +159,12 @@
                 <form id="trade-form" class="trade-form">
                     <div class="form-grid">
                         <div class="form-group">
+                            <label for="trade-account">Account</label>
+                            <select id="trade-account" required>
+                                <option value="">Select account...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label for="trade-date">Date & Time</label>
                             <input type="datetime-local" id="trade-date" required>
                         </div>
@@ -170,24 +185,34 @@
                             <input type="number" id="trade-entry" step="any" placeholder="0.00" required>
                         </div>
                         <div class="form-group">
-                            <label for="trade-exit">Exit Price</label>
-                            <input type="number" id="trade-exit" step="any" placeholder="0.00" required>
-                        </div>
-                        <div class="form-group">
                             <label for="trade-sl">Stop Loss</label>
                             <input type="number" id="trade-sl" step="any" placeholder="0.00" required>
                         </div>
                         <div class="form-group">
                             <label for="trade-tp">Take Profit</label>
-                            <input type="number" id="trade-tp" step="any" placeholder="0.00">
+                            <input type="number" id="trade-tp" step="any" placeholder="0.00" required>
                         </div>
                         <div class="form-group">
-                            <label for="trade-size">Position Size</label>
-                            <input type="number" id="trade-size" step="any" placeholder="Lots/Contracts" required>
+                            <label for="trade-result">Trade Result</label>
+                            <select id="trade-result" required>
+                                <option value="">Select...</option>
+                                <option value="tp">Hit Take Profit ✅</option>
+                                <option value="sl">Hit Stop Loss ❌</option>
+                                <option value="partial">Partial Close</option>
+                                <option value="be">Breakeven</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="manual-exit-group" style="display: none;">
+                            <label for="trade-exit">Exit Price</label>
+                            <input type="number" id="trade-exit" step="any" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="trade-size">Lot Size</label>
+                            <input type="number" id="trade-size" step="any" placeholder="e.g., 0.1, 1, 2" required>
                         </div>
                         <div class="form-group">
                             <label for="trade-pnl">P&L ($)</label>
-                            <input type="number" id="trade-pnl" step="any" placeholder="0.00" required>
+                            <input type="number" id="trade-pnl" step="any" placeholder="e.g., 150 or -50" required>
                         </div>
                         <div class="form-group">
                             <label for="trade-fees">Fees/Commission</label>
@@ -298,24 +323,48 @@
                 </div>
 
                 <div class="settings-section">
-                    <h3>Account Settings</h3>
+                    <h3>Trading Accounts</h3>
+                    <p class="section-desc">Manage your trading accounts to track performance separately.</p>
+                    
+                    <div class="accounts-list" id="accounts-list">
+                        <!-- Accounts will be rendered here -->
+                    </div>
+                    
+                    <div class="add-account-form">
+                        <h4>Add New Account</h4>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="new-account-name">Account Name</label>
+                                <input type="text" id="new-account-name" placeholder="e.g., FTMO, Personal, Demo">
+                            </div>
+                            <div class="form-group">
+                                <label for="new-account-broker">Broker</label>
+                                <input type="text" id="new-account-broker" placeholder="e.g., IC Markets, Binance">
+                            </div>
+                            <div class="form-group">
+                                <label for="new-account-balance">Initial Balance</label>
+                                <input type="number" id="new-account-balance" step="any" placeholder="10000">
+                            </div>
+                            <div class="form-group">
+                                <label for="new-account-currency">Currency</label>
+                                <select id="new-account-currency">
+                                    <option value="USD">USD ($)</option>
+                                    <option value="EUR">EUR (€)</option>
+                                    <option value="GBP">GBP (£)</option>
+                                    <option value="JPY">JPY (¥)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn-primary" id="add-account-btn">Add Account</button>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>General Settings</h3>
                     <div class="form-grid">
                         <div class="form-group">
-                            <label for="initial-balance">Initial Balance ($)</label>
-                            <input type="number" id="initial-balance" step="any" placeholder="10000">
-                        </div>
-                        <div class="form-group">
-                            <label for="risk-per-trade">Risk Per Trade (%)</label>
+                            <label for="risk-per-trade">Default Risk Per Trade (%)</label>
                             <input type="number" id="risk-per-trade" step="0.1" placeholder="1" value="1">
-                        </div>
-                        <div class="form-group">
-                            <label for="currency">Currency</label>
-                            <select id="currency">
-                                <option value="USD">USD ($)</option>
-                                <option value="EUR">EUR (€)</option>
-                                <option value="GBP">GBP (£)</option>
-                                <option value="JPY">JPY (¥)</option>
-                            </select>
                         </div>
                     </div>
                     <button class="btn-primary" id="save-settings">Save Settings</button>
@@ -346,6 +395,15 @@
 
     <!-- Toast Notification -->
     <div class="toast" id="toast"></div>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+        <div class="footer-content">
+            <img src="Avatar.jpg" alt="Marco" class="footer-avatar">
+            <p>Created by <strong>Marco Alvarado</strong> • All Rights Reserved © <span id="footer-year"></span></p>
+        </div>
+    </footer>
+    <script>document.getElementById('footer-year').textContent = new Date().getFullYear();</script>
 
     <script src="app.js"></script>
 </body>

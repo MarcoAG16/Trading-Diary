@@ -32,15 +32,17 @@ if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
 class TradingJournal {
     constructor() {
         this.trades = [];
+        this.accounts = [];
+        this.selectedAccountId = 'all';
         this.settings = {
-            initialBalance: 10000,
-            riskPerTrade: 1,
-            currency: 'USD'
+            riskPerTrade: 1
         };
         this.currentScreenshots = [];
         this.currentUser = null;
         this.unsubscribeTrades = null;
         this.unsubscribeSettings = null;
+        this.unsubscribeAccounts = null;
+        this.editingTradeId = null;
         
         this.init();
     }
@@ -55,6 +57,8 @@ class TradingJournal {
         this.setupNavigation();
         this.setupScreenshotUpload();
         this.setupAuth();
+        this.renderAccountSelectors();
+        this.renderAccountsList();
         this.updateDashboard();
         this.renderHistoryTable();
         this.initCharts();
@@ -64,6 +68,7 @@ class TradingJournal {
     loadLocalData() {
         const storedTrades = localStorage.getItem('tradingJournal_trades');
         const storedSettings = localStorage.getItem('tradingJournal_settings');
+        const storedAccounts = localStorage.getItem('tradingJournal_accounts');
         
         if (storedTrades) {
             this.trades = JSON.parse(storedTrades);
@@ -72,11 +77,29 @@ class TradingJournal {
         if (storedSettings) {
             this.settings = { ...this.settings, ...JSON.parse(storedSettings) };
         }
+        
+        if (storedAccounts) {
+            this.accounts = JSON.parse(storedAccounts);
+        }
+        
+        // Create default account if none exist
+        if (this.accounts.length === 0) {
+            this.accounts.push({
+                id: 'default',
+                name: 'Main Account',
+                broker: '',
+                initialBalance: 10000,
+                currency: 'USD',
+                createdAt: new Date().toISOString()
+            });
+            this.saveLocalData();
+        }
     }
     
     saveLocalData() {
         localStorage.setItem('tradingJournal_trades', JSON.stringify(this.trades));
         localStorage.setItem('tradingJournal_settings', JSON.stringify(this.settings));
+        localStorage.setItem('tradingJournal_accounts', JSON.stringify(this.accounts));
     }
     
     // ═══════════════════════════════════════════════════════════
@@ -197,6 +220,37 @@ class TradingJournal {
                     this.updateDashboard();
                 }
             });
+        
+        // Subscribe to accounts
+        this.unsubscribeAccounts = db
+            .collection('users')
+            .doc(userId)
+            .collection('accounts')
+            .onSnapshot((snapshot) => {
+                this.accounts = [];
+                snapshot.forEach((doc) => {
+                    this.accounts.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Create default account if none exist
+                if (this.accounts.length === 0) {
+                    const defaultAccount = {
+                        id: 'default',
+                        name: 'Main Account',
+                        broker: '',
+                        initialBalance: 10000,
+                        currency: 'USD',
+                        createdAt: new Date().toISOString()
+                    };
+                    this.accounts.push(defaultAccount);
+                    this.saveAccountToCloud(defaultAccount);
+                }
+                
+                this.saveLocalData();
+                this.renderAccountSelectors();
+                this.renderAccountsList();
+                this.updateDashboard();
+            });
     }
     
     unsubscribeFromCloudData() {
@@ -207,6 +261,10 @@ class TradingJournal {
         if (this.unsubscribeSettings) {
             this.unsubscribeSettings();
             this.unsubscribeSettings = null;
+        }
+        if (this.unsubscribeAccounts) {
+            this.unsubscribeAccounts();
+            this.unsubscribeAccounts = null;
         }
     }
     
@@ -283,17 +341,17 @@ class TradingJournal {
             }
         });
         
-        // Export/Import
-        document.getElementById('export-btn').addEventListener('click', () => {
-            this.exportData();
+        // Account selector change
+        document.getElementById('current-account').addEventListener('change', (e) => {
+            this.selectedAccountId = e.target.value;
+            this.updateDashboard();
+            this.renderHistoryTable();
+            this.updateCharts();
         });
         
-        document.getElementById('import-btn').addEventListener('click', () => {
-            document.getElementById('import-file').click();
-        });
-        
-        document.getElementById('import-file').addEventListener('change', (e) => {
-            this.importData(e);
+        // Add account button
+        document.getElementById('add-account-btn').addEventListener('click', () => {
+            this.addAccount();
         });
         
         // Filters
@@ -323,6 +381,33 @@ class TradingJournal {
             }
         });
         
+        // Event delegation for dynamic buttons
+        document.addEventListener('click', (e) => {
+            const target = e.target.closest('[data-action]');
+            if (!target) return;
+            
+            const action = target.dataset.action;
+            const id = target.dataset.id;
+            
+            switch(action) {
+                case 'view-trade':
+                    this.showTradeDetail(id);
+                    break;
+                case 'edit-trade':
+                    this.editTrade(id);
+                    break;
+                case 'delete-trade':
+                    this.deleteTrade(id);
+                    break;
+                case 'delete-account':
+                    this.deleteAccount(id);
+                    break;
+                case 'remove-screenshot':
+                    this.removeScreenshot(parseInt(id));
+                    break;
+            }
+        });
+        
         // Mobile menu toggle
         document.getElementById('menu-toggle').addEventListener('click', () => {
             document.querySelector('.sidebar').classList.toggle('open');
@@ -332,7 +417,34 @@ class TradingJournal {
         const now = new Date();
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         document.getElementById('trade-date').value = now.toISOString().slice(0, 16);
-    }
+        
+        // Force uppercase on symbol fields
+        const symbolInput = document.getElementById('trade-symbol');
+        if (symbolInput) {
+            symbolInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.toUpperCase();
+            });
+        }
+        
+        const filterSymbol = document.getElementById('filter-symbol');
+        if (filterSymbol) {
+            filterSymbol.addEventListener('input', (e) => {
+                e.target.value = e.target.value.toUpperCase();
+            });
+        }
+        
+        // Trade result change - show/hide manual exit
+        document.getElementById('trade-result').addEventListener('change', (e) => {
+            const manualExitGroup = document.getElementById('manual-exit-group');
+            if (e.target.value === 'partial' || e.target.value === 'be') {
+                manualExitGroup.style.display = 'flex';
+            } else {
+                manualExitGroup.style.display = 'none';
+            }
+            this.calculatePnL();
+        });
+        
+        }
     
     // ═══════════════════════════════════════════════════════════
     // NAVIGATION
@@ -359,6 +471,179 @@ class TradingJournal {
                 document.querySelector('.sidebar').classList.remove('open');
             });
         });
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    // ACCOUNT MANAGEMENT
+    // ═══════════════════════════════════════════════════════════
+    
+    renderAccountSelectors() {
+        const mainSelector = document.getElementById('current-account');
+        const tradeSelector = document.getElementById('trade-account');
+        
+        // Main account selector (with "All Accounts" option)
+        mainSelector.innerHTML = '<option value="all">All Accounts</option>' +
+            this.accounts.map(acc => 
+                `<option value="${acc.id}">${acc.name}</option>`
+            ).join('');
+        
+        // Trade form account selector (no "All" option)
+        tradeSelector.innerHTML = '<option value="">Select account...</option>' +
+            this.accounts.map(acc => 
+                `<option value="${acc.id}">${acc.name}</option>`
+            ).join('');
+        
+        // Select first account by default in trade form if only one exists
+        if (this.accounts.length === 1) {
+            tradeSelector.value = this.accounts[0].id;
+        }
+    }
+    
+    renderAccountsList() {
+        const container = document.getElementById('accounts-list');
+        
+        if (this.accounts.length === 0) {
+            container.innerHTML = '<div class="empty-accounts">No accounts yet. Add one below.</div>';
+            return;
+        }
+        
+        container.innerHTML = this.accounts.map(acc => {
+            const stats = this.getAccountStats(acc.id);
+            const currencySymbol = this.getCurrencySymbolForAccount(acc.currency);
+            
+            return `
+                <div class="account-card">
+                    <div class="account-card-info">
+                        <div class="account-card-name">${acc.name}</div>
+                        <div class="account-card-details">${acc.broker || 'No broker'} • ${acc.currency}</div>
+                    </div>
+                    <div class="account-card-balance">
+                        ${currencySymbol}${stats.currentBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </div>
+                    <div class="account-card-actions">
+                        <button class="btn-icon delete" data-action="delete-account" data-id="${acc.id}" title="Delete">🗑</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    addAccount() {
+        const name = document.getElementById('new-account-name').value.trim();
+        const broker = document.getElementById('new-account-broker').value.trim();
+        const balance = parseFloat(document.getElementById('new-account-balance').value) || 10000;
+        const currency = document.getElementById('new-account-currency').value;
+        
+        if (!name) {
+            this.showToast('Please enter an account name', 'error');
+            return;
+        }
+        
+        const account = {
+            id: Date.now().toString(),
+            name: name,
+            broker: broker,
+            initialBalance: balance,
+            currency: currency,
+            createdAt: new Date().toISOString()
+        };
+        
+        this.accounts.push(account);
+        
+        if (this.currentUser && db) {
+            this.saveAccountToCloud(account);
+        } else {
+            this.saveLocalData();
+        }
+        
+        // Clear form
+        document.getElementById('new-account-name').value = '';
+        document.getElementById('new-account-broker').value = '';
+        document.getElementById('new-account-balance').value = '';
+        
+        this.renderAccountSelectors();
+        this.renderAccountsList();
+        this.showToast('Account added successfully!', 'success');
+    }
+    
+    deleteAccount(id) {
+        // Don't allow deleting if it's the only account
+        if (this.accounts.length <= 1) {
+            this.showToast('You must have at least one account', 'error');
+            return;
+        }
+        
+        // Check if there are trades in this account
+        const tradesInAccount = this.trades.filter(t => t.accountId === id).length;
+        if (tradesInAccount > 0) {
+            if (!confirm(`This account has ${tradesInAccount} trades. Delete anyway?`)) {
+                return;
+            }
+        }
+        
+        if (confirm('Are you sure you want to delete this account?')) {
+            this.accounts = this.accounts.filter(a => a.id !== id);
+            
+            if (this.currentUser && db) {
+                this.deleteAccountFromCloud(id);
+            } else {
+                this.saveLocalData();
+            }
+            
+            // Reset selector if deleted account was selected
+            if (this.selectedAccountId === id) {
+                this.selectedAccountId = 'all';
+                document.getElementById('current-account').value = 'all';
+            }
+            
+            this.renderAccountSelectors();
+            this.renderAccountsList();
+            this.updateDashboard();
+            this.showToast('Account deleted', 'success');
+        }
+    }
+    
+    getAccountStats(accountId) {
+        const accountTrades = this.trades.filter(t => t.accountId === accountId);
+        const account = this.accounts.find(a => a.id === accountId);
+        const initialBalance = account ? account.initialBalance : 10000;
+        
+        let totalPnl = 0;
+        accountTrades.forEach(trade => {
+            const netPnl = trade.netPnl !== undefined ? trade.netPnl : (trade.pnl - (trade.fees || 0));
+            totalPnl += netPnl;
+        });
+        
+        return {
+            currentBalance: initialBalance + totalPnl,
+            totalPnl: totalPnl,
+            tradesCount: accountTrades.length
+        };
+    }
+    
+    getCurrencySymbolForAccount(currency) {
+        const symbols = { 'USD': '$', 'EUR': '€', 'GBP': '£', 'JPY': '¥' };
+        return symbols[currency] || '$';
+    }
+    
+    async saveAccountToCloud(account) {
+        if (!this.currentUser || !db) return;
+        try {
+            await db.collection('users').doc(this.currentUser.uid)
+                .collection('accounts').doc(account.id).set(account);
+        } catch (error) {
+            console.error('Save account error:', error);
+        }
+    }
+    
+    async deleteAccountFromCloud(accountId) {
+        if (!this.currentUser || !db) return;
+        try {
+            await db.collection('users').doc(this.currentUser.uid)
+                .collection('accounts').doc(accountId).delete();
+        } catch (error) {
+            console.error('Delete account error:', error);
+        }
     }
     
     // ═══════════════════════════════════════════════════════════
@@ -439,7 +724,7 @@ class TradingJournal {
         container.innerHTML = this.currentScreenshots.map((src, index) => `
             <div class="screenshot-preview">
                 <img src="${src}" alt="Screenshot ${index + 1}">
-                <button type="button" class="remove-screenshot" onclick="app.removeScreenshot(${index})">&times;</button>
+                <button type="button" class="remove-screenshot" data-action="remove-screenshot" data-id="${index}">&times;</button>
             </div>
         `).join('');
     }
@@ -454,22 +739,51 @@ class TradingJournal {
     // ═══════════════════════════════════════════════════════════
     
     addTrade() {
+        const accountId = document.getElementById('trade-account').value;
+        if (!accountId) {
+            this.showToast('Please select an account', 'error');
+            return;
+        }
+        
+        const result = document.getElementById('trade-result').value;
+        const entry = parseFloat(document.getElementById('trade-entry').value);
+        const sl = parseFloat(document.getElementById('trade-sl').value);
+        const tp = parseFloat(document.getElementById('trade-tp').value);
+        const manualExit = parseFloat(document.getElementById('trade-exit').value);
+        
+        // Determine exit price based on result
+        let exitPrice;
+        switch (result) {
+            case 'tp': exitPrice = tp; break;
+            case 'sl': exitPrice = sl; break;
+            case 'be': exitPrice = entry; break;
+            case 'partial': exitPrice = manualExit || entry; break;
+            default: exitPrice = tp;
+        }
+        
+        // Check if we're editing an existing trade
+        const isEditing = !!this.editingTradeId;
+        const tradeId = isEditing ? this.editingTradeId : Date.now().toString();
+        
         const trade = {
-            id: Date.now().toString(),
+            id: tradeId,
+            accountId: accountId,
             date: document.getElementById('trade-date').value,
             symbol: document.getElementById('trade-symbol').value.toUpperCase(),
             direction: document.getElementById('trade-direction').value,
-            entry: parseFloat(document.getElementById('trade-entry').value),
-            exit: parseFloat(document.getElementById('trade-exit').value),
-            stopLoss: parseFloat(document.getElementById('trade-sl').value),
-            takeProfit: parseFloat(document.getElementById('trade-tp').value) || null,
+            entry: entry,
+            exit: exitPrice,
+            stopLoss: sl,
+            takeProfit: tp,
+            result: result,
             size: parseFloat(document.getElementById('trade-size').value),
             pnl: parseFloat(document.getElementById('trade-pnl').value),
             fees: parseFloat(document.getElementById('trade-fees').value) || 0,
             strategy: document.getElementById('trade-strategy').value,
             notes: document.getElementById('trade-notes').value,
             screenshots: [...this.currentScreenshots],
-            createdAt: new Date().toISOString()
+            createdAt: isEditing ? (this.trades.find(t => t.id === tradeId)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
+            updatedAt: isEditing ? new Date().toISOString() : null
         };
         
         // Calculate R:R
@@ -479,16 +793,39 @@ class TradingJournal {
         // Save to cloud if logged in, otherwise local
         if (this.currentUser && db) {
             this.saveTradeToCloud(trade);
+            // Update local array for immediate UI response
+            if (isEditing) {
+                const index = this.trades.findIndex(t => t.id === tradeId);
+                if (index !== -1) {
+                    this.trades[index] = trade;
+                }
+            } else {
+                this.trades.push(trade);
+            }
         } else {
-            this.trades.push(trade);
+            if (isEditing) {
+                const index = this.trades.findIndex(t => t.id === tradeId);
+                if (index !== -1) {
+                    this.trades[index] = trade;
+                }
+            } else {
+                this.trades.push(trade);
+            }
             this.saveLocalData();
-            this.updateDashboard();
-            this.renderHistoryTable();
-            this.updateCharts();
         }
         
+        this.updateDashboard();
+        this.renderHistoryTable();
+        this.updateCharts();
+        
+        // Reset editing state
+        this.editingTradeId = null;
+        const submitBtn = document.querySelector('#trade-form button[type="submit"]');
+        submitBtn.textContent = 'Save Trade';
+        submitBtn.classList.remove('editing');
+        
         this.clearTradeForm();
-        this.showToast('Trade saved successfully!', 'success');
+        this.showToast(isEditing ? 'Trade updated successfully!' : 'Trade saved successfully!', 'success');
         
         // Switch to dashboard
         document.querySelector('[data-tab="dashboard"]').click();
@@ -512,16 +849,63 @@ class TradingJournal {
         if (confirm('Are you sure you want to delete this trade?')) {
             if (this.currentUser && db) {
                 this.deleteTradeFromCloud(id);
+                // Also remove locally for immediate UI update
+                this.trades = this.trades.filter(t => t.id !== id);
             } else {
                 this.trades = this.trades.filter(t => t.id !== id);
                 this.saveLocalData();
-                this.updateDashboard();
-                this.renderHistoryTable();
-                this.updateCharts();
             }
+            this.updateDashboard();
+            this.renderHistoryTable();
+            this.updateCharts();
             this.closeModal();
             this.showToast('Trade deleted', 'success');
         }
+    }
+    
+    editTrade(id) {
+        const trade = this.trades.find(t => t.id === id);
+        if (!trade) return;
+        
+        this.closeModal();
+        
+        // Switch to new trade tab
+        document.querySelector('[data-tab="new-trade"]').click();
+        
+        // Populate form with trade data
+        document.getElementById('trade-account').value = trade.accountId || '';
+        document.getElementById('trade-date').value = trade.date || '';
+        document.getElementById('trade-symbol').value = trade.symbol || '';
+        document.getElementById('trade-direction').value = trade.direction || '';
+        document.getElementById('trade-entry').value = trade.entry || '';
+        document.getElementById('trade-sl').value = trade.stopLoss || '';
+        document.getElementById('trade-tp').value = trade.takeProfit || '';
+        document.getElementById('trade-result').value = trade.result || 'tp';
+        document.getElementById('trade-size').value = trade.size || '';
+        document.getElementById('trade-pnl').value = trade.pnl || '';
+        document.getElementById('trade-fees').value = trade.fees || 0;
+        document.getElementById('trade-strategy').value = trade.strategy || '';
+        document.getElementById('trade-notes').value = trade.notes || '';
+        
+        // Handle manual exit price visibility
+        if (trade.result === 'partial' || trade.result === 'be') {
+            document.getElementById('manual-exit-group').style.display = 'flex';
+            document.getElementById('trade-exit').value = trade.exit || '';
+        }
+        
+        // Load screenshots
+        this.currentScreenshots = trade.screenshots || [];
+        this.renderScreenshotPreviews();
+        
+        // Store the trade ID for updating
+        this.editingTradeId = id;
+        
+        // Change button text
+        const submitBtn = document.querySelector('#trade-form button[type="submit"]');
+        submitBtn.textContent = 'Update Trade';
+        submitBtn.classList.add('editing');
+        
+        this.showToast('Editing trade - make changes and save', 'success');
     }
     
     clearTradeForm() {
@@ -533,6 +917,17 @@ class TradingJournal {
         const now = new Date();
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         document.getElementById('trade-date').value = now.toISOString().slice(0, 16);
+        
+        // Hide manual exit field
+        document.getElementById('manual-exit-group').style.display = 'none';
+        
+        // Reset editing state
+        this.editingTradeId = null;
+        const submitBtn = document.querySelector('#trade-form button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.textContent = 'Save Trade';
+            submitBtn.classList.remove('editing');
+        }
     }
     
     // ═══════════════════════════════════════════════════════════
@@ -547,7 +942,8 @@ class TradingJournal {
         document.getElementById('current-balance').textContent = 
             `${currencySymbol}${stats.currentBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         
-        const balanceChange = ((stats.currentBalance - this.settings.initialBalance) / this.settings.initialBalance) * 100;
+        const balanceChange = stats.initialBalance > 0 ? 
+            ((stats.currentBalance - stats.initialBalance) / stats.initialBalance) * 100 : 0;
         const balanceChangeEl = document.getElementById('balance-change');
         balanceChangeEl.textContent = `${balanceChange >= 0 ? '+' : ''}${balanceChange.toFixed(2)}%`;
         balanceChangeEl.className = `stat-change ${balanceChange >= 0 ? 'positive' : 'negative'}`;
@@ -566,18 +962,36 @@ class TradingJournal {
         
         // Update recent trades
         this.renderRecentTrades();
+        
+        // Update accounts list in settings
+        this.renderAccountsList();
     }
     
     calculateStats() {
-        const sortedTrades = [...this.trades].sort((a, b) => new Date(a.date) - new Date(b.date));
+        // Filter trades by selected account
+        let filteredTrades = this.trades;
+        let initialBalance = 0;
+        
+        if (this.selectedAccountId === 'all') {
+            // Sum all account balances
+            this.accounts.forEach(acc => {
+                initialBalance += acc.initialBalance;
+            });
+        } else {
+            filteredTrades = this.trades.filter(t => t.accountId === this.selectedAccountId);
+            const account = this.accounts.find(a => a.id === this.selectedAccountId);
+            initialBalance = account ? account.initialBalance : 10000;
+        }
+        
+        const sortedTrades = [...filteredTrades].sort((a, b) => new Date(a.date) - new Date(b.date));
         
         let totalPnl = 0;
         let wins = 0;
         let losses = 0;
         let totalRR = 0;
-        let peakBalance = this.settings.initialBalance;
+        let peakBalance = initialBalance;
         let maxDrawdown = 0;
-        let runningBalance = this.settings.initialBalance;
+        let runningBalance = initialBalance;
         
         sortedTrades.forEach(trade => {
             const netPnl = trade.netPnl !== undefined ? trade.netPnl : (trade.pnl - (trade.fees || 0));
@@ -599,10 +1013,10 @@ class TradingJournal {
             }
         });
         
-        const totalTrades = this.trades.length;
+        const totalTrades = filteredTrades.length;
         const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
         const avgRR = totalTrades > 0 ? totalRR / totalTrades : 0;
-        const currentBalance = this.settings.initialBalance + totalPnl;
+        const currentBalance = initialBalance + totalPnl;
         
         return {
             totalPnl,
@@ -612,7 +1026,8 @@ class TradingJournal {
             avgRR,
             maxDrawdown,
             totalTrades,
-            currentBalance
+            currentBalance,
+            initialBalance
         };
     }
     
@@ -623,12 +1038,28 @@ class TradingJournal {
             'GBP': '£',
             'JPY': '¥'
         };
-        return symbols[this.settings.currency] || '$';
+        
+        // Get currency from selected account or default to USD
+        if (this.selectedAccountId !== 'all') {
+            const account = this.accounts.find(a => a.id === this.selectedAccountId);
+            if (account) {
+                return symbols[account.currency] || '$';
+            }
+        }
+        
+        // For "all accounts", use USD as default
+        return '$';
     }
     
     renderRecentTrades() {
         const tbody = document.getElementById('recent-trades-body');
-        const recentTrades = [...this.trades]
+        
+        let tradesToShow = this.trades;
+        if (this.selectedAccountId !== 'all') {
+            tradesToShow = this.trades.filter(t => t.accountId === this.selectedAccountId);
+        }
+        
+        const recentTrades = [...tradesToShow]
             .sort((a, b) => new Date(b.date) - new Date(a.date))
             .slice(0, 5);
         
@@ -647,7 +1078,7 @@ class TradingJournal {
             const currencySymbol = this.getCurrencySymbol();
             
             return `
-                <tr onclick="app.showTradeDetail('${trade.id}')" style="cursor: pointer;">
+                <tr data-action="view-trade" data-id="${trade.id}" style="cursor: pointer;">
                     <td>${this.formatDate(trade.date)}</td>
                     <td>${trade.symbol}</td>
                     <td class="direction-${trade.direction}">${trade.direction.toUpperCase()}</td>
@@ -695,8 +1126,9 @@ class TradingJournal {
                         <td>${trade.rr >= 0 ? '+' : ''}${trade.rr.toFixed(2)}R</td>
                         <td>${trade.strategy || '-'}</td>
                         <td>
-                            <button class="btn-icon" onclick="app.showTradeDetail('${trade.id}')" title="View">👁</button>
-                            <button class="btn-icon delete" onclick="app.deleteTrade('${trade.id}')" title="Delete">🗑</button>
+                            <button class="btn-icon" data-action="view-trade" data-id="${trade.id}" title="View">👁</button>
+                            <button class="btn-icon" data-action="edit-trade" data-id="${trade.id}" title="Edit">✏️</button>
+                            <button class="btn-icon delete" data-action="delete-trade" data-id="${trade.id}" title="Delete">🗑️</button>
                         </td>
                     </tr>
                 `;
@@ -705,6 +1137,11 @@ class TradingJournal {
     
     getFilteredTrades() {
         let filtered = [...this.trades];
+        
+        // Filter by selected account
+        if (this.selectedAccountId !== 'all') {
+            filtered = filtered.filter(t => t.accountId === this.selectedAccountId);
+        }
         
         const symbolFilter = document.getElementById('filter-symbol').value.toUpperCase();
         const directionFilter = document.getElementById('filter-direction').value;
@@ -844,7 +1281,8 @@ class TradingJournal {
             ` : ''}
             
             <div style="margin-top: 1.5rem; display: flex; gap: 1rem; justify-content: flex-end;">
-                <button class="btn-danger" onclick="app.deleteTrade('${trade.id}')">Delete Trade</button>
+                <button class="btn-secondary" data-action="edit-trade" data-id="${trade.id}">✏️ Edit Trade</button>
+                <button class="btn-danger" data-action="delete-trade" data-id="${trade.id}">🗑️ Delete Trade</button>
             </div>
         `;
         
@@ -879,7 +1317,19 @@ class TradingJournal {
         canvas.width = container.offsetWidth;
         canvas.height = container.offsetHeight;
         
-        const sortedTrades = [...this.trades].sort((a, b) => new Date(a.date) - new Date(b.date));
+        // Filter trades by selected account
+        let tradesToChart = this.trades;
+        let initialBalance = 0;
+        
+        if (this.selectedAccountId === 'all') {
+            this.accounts.forEach(acc => initialBalance += acc.initialBalance);
+        } else {
+            tradesToChart = this.trades.filter(t => t.accountId === this.selectedAccountId);
+            const account = this.accounts.find(a => a.id === this.selectedAccountId);
+            initialBalance = account ? account.initialBalance : 10000;
+        }
+        
+        const sortedTrades = [...tradesToChart].sort((a, b) => new Date(a.date) - new Date(b.date));
         
         if (sortedTrades.length < 2) {
             ctx.fillStyle = '#64748b';
@@ -890,7 +1340,7 @@ class TradingJournal {
         }
         
         // Calculate equity curve data
-        let balance = this.settings.initialBalance;
+        let balance = initialBalance;
         const data = [{ x: 0, y: balance }];
         
         sortedTrades.forEach((trade, i) => {
@@ -982,9 +1432,15 @@ class TradingJournal {
         canvas.width = container.offsetWidth;
         canvas.height = container.offsetHeight;
         
+        // Filter trades by selected account
+        let tradesToChart = this.trades;
+        if (this.selectedAccountId !== 'all') {
+            tradesToChart = this.trades.filter(t => t.accountId === this.selectedAccountId);
+        }
+        
         // Group trades by month
         const monthlyData = {};
-        this.trades.forEach(trade => {
+        tradesToChart.forEach(trade => {
             const date = new Date(trade.date);
             const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
             const netPnl = trade.netPnl !== undefined ? trade.netPnl : (trade.pnl - (trade.fees || 0));
@@ -1056,15 +1512,17 @@ class TradingJournal {
     // ═══════════════════════════════════════════════════════════
     
     populateSettingsForm() {
-        document.getElementById('initial-balance').value = this.settings.initialBalance;
-        document.getElementById('risk-per-trade').value = this.settings.riskPerTrade;
-        document.getElementById('currency').value = this.settings.currency;
+        const riskInput = document.getElementById('risk-per-trade');
+        if (riskInput) {
+            riskInput.value = this.settings.riskPerTrade || 1;
+        }
     }
     
     saveSettings() {
-        this.settings.initialBalance = parseFloat(document.getElementById('initial-balance').value) || 10000;
-        this.settings.riskPerTrade = parseFloat(document.getElementById('risk-per-trade').value) || 1;
-        this.settings.currency = document.getElementById('currency').value;
+        const riskInput = document.getElementById('risk-per-trade');
+        if (riskInput) {
+            this.settings.riskPerTrade = parseFloat(riskInput.value) || 1;
+        }
         
         this.saveLocalData();
         
@@ -1108,75 +1566,6 @@ class TradingJournal {
     }
     
     // ═══════════════════════════════════════════════════════════
-    // IMPORT/EXPORT
-    // ═══════════════════════════════════════════════════════════
-    
-    exportData() {
-        const data = {
-            version: '1.0',
-            exportDate: new Date().toISOString(),
-            settings: this.settings,
-            trades: this.trades
-        };
-        
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `trading-journal-${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        
-        URL.revokeObjectURL(url);
-        this.showToast('Data exported successfully!', 'success');
-    }
-    
-    async importData(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-            try {
-                const data = JSON.parse(event.target.result);
-                
-                if (data.trades && Array.isArray(data.trades)) {
-                    // If logged in, upload to cloud
-                    if (this.currentUser && db) {
-                        for (const trade of data.trades) {
-                            await this.saveTradeToCloud(trade);
-                        }
-                    } else {
-                        this.trades = data.trades;
-                    }
-                }
-                
-                if (data.settings) {
-                    this.settings = { ...this.settings, ...data.settings };
-                    if (this.currentUser && db) {
-                        await this.saveSettingsToCloud();
-                    }
-                }
-                
-                this.saveLocalData();
-                this.populateSettingsForm();
-                this.updateDashboard();
-                this.renderHistoryTable();
-                this.updateCharts();
-                
-                this.showToast(`Imported ${data.trades?.length || 0} trades successfully!`, 'success');
-            } catch (err) {
-                this.showToast('Error importing data. Please check the file format.', 'error');
-                console.error('Import error:', err);
-            }
-        };
-        reader.readAsText(file);
-        
-        // Reset input
-        e.target.value = '';
-    }
-    
-    // ═══════════════════════════════════════════════════════════
     // UTILITIES
     // ═══════════════════════════════════════════════════════════
     
@@ -1211,15 +1600,55 @@ class TradingJournal {
     }
 }
 
-// Initialize app
-let app;
+// Initialize app - make it global for onclick handlers
+window.app = null;
 document.addEventListener('DOMContentLoaded', () => {
-    app = new TradingJournal();
+    try {
+        window.app = new TradingJournal();
+        console.log('TradingJournal initialized successfully');
+    } catch (error) {
+        console.error('Error initializing TradingJournal:', error);
+        alert('Error loading app: ' + error.message);
+    }
+    
+    // Logo orb animation - starts on hover, stops after 10 seconds
+    const logo = document.querySelector('.logo');
+    const orbContainer = document.querySelector('.logo-orb-container');
+    let orbTimeout = null;
+    let isAnimating = false;
+    
+    if (logo && orbContainer) {
+        logo.addEventListener('mouseenter', () => {
+            if (!isAnimating) {
+                isAnimating = true;
+                orbContainer.classList.add('animating');
+                
+                // Stop animation after 10 seconds
+                orbTimeout = setTimeout(() => {
+                    orbContainer.classList.remove('animating');
+                    isAnimating = false;
+                }, 10000);
+            }
+        });
+        
+        // Also trigger on click for mobile
+        logo.addEventListener('click', () => {
+            if (!isAnimating) {
+                isAnimating = true;
+                orbContainer.classList.add('animating');
+                
+                orbTimeout = setTimeout(() => {
+                    orbContainer.classList.remove('animating');
+                    isAnimating = false;
+                }, 10000);
+            }
+        });
+    }
 });
 
 // Handle window resize for charts
 window.addEventListener('resize', () => {
-    if (app) {
-        app.updateCharts();
+    if (window.app) {
+        window.app.updateCharts();
     }
 });
